@@ -21,8 +21,15 @@ export async function POST(req: NextRequest) {
     const r = await submitTyped({
       raceId: String(body.raceId || ''),
       lane: body.lane,
-      typed: String(body.typed || ''),
-      elapsedMs: Number(body.elapsedMs || 0),
+      // Multi-passage shape (booth) takes precedence over single-passage when
+      // both are sent.
+      segments: Array.isArray(body.segments) ? body.segments : undefined,
+      typed: typeof body.typed === 'string' ? body.typed : undefined,
+      elapsedMs: typeof body.elapsedMs === 'number' ? body.elapsedMs : undefined,
+      // Booth flow sends `final: false` for the every-300ms live updates so
+      // the race doesn't auto-finalize after the first tick. Defaults to
+      // true to preserve legacy /play + admin behavior.
+      final: body.final !== false,
     });
     return NextResponse.json(r);
   } catch (e: any) {

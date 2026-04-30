@@ -1,173 +1,132 @@
 'use client';
-import Link from 'next/link';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
 import { api } from '@/components/api';
 
-// /head-to-head is the hub for head-to-head content:
-//   - Big countdown to the next 8pm showdown
-//   - Primary CTA: Start an instant 1v1 with a friend
-//   - Secondary: Reserve a slot for the scheduled showdown
+type View = 'idle' | 'joining';
+
 export default function HeadToHeadPage() {
   const router = useRouter();
-  const [creating, setCreating] = useState(false);
+  const [view, setView] = useState<View>('idle');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  async function startInstant() {
-    setCreating(true); setErr(null);
+  // Create a room on the server, then route the creator straight to the
+  // player page for lane 1. Name is collected there — not here — so it's
+  // only ever asked once (was a duplicate-prompt bug previously).
+  async function createRoom() {
+    setBusy(true); setErr(null);
     try {
       const r = await api<{ room: { id: string } }>('/api/h2h/create', {
         method: 'POST',
         body: JSON.stringify({ durationS: 60 }),
       });
-      router.push(`/h2h/${r.room.id}`);
+      router.push(`/h2h/${r.room.id}/1`);
     } catch (e: any) {
       setErr(e.message || 'could not create room');
-      setCreating(false);
+      setBusy(false);
     }
+  }
+
+  // Just routes to the player page for lane 2 — the JoinStep there handles
+  // name entry and the actual /api/h2h/<id>/join call. We do a quick GET to
+  // validate the code so the user gets immediate feedback if it's wrong
+  // (instead of bouncing them to a "Room not found" screen).
+  async function joinWithCode() {
+    if (!code.trim()) return;
+    const id = code.trim().toLowerCase();
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch(`/api/h2h/${id}`, { cache: 'no-store' });
+      if (!r.ok) throw new Error('room not found — check the code and try again');
+      router.push(`/h2h/${id}/2`);
+    } catch (e: any) {
+      setErr(e.message || 'could not join — check the code and try again');
+      setBusy(false);
+    }
+  }
+
+  if (view === 'joining') {
+    return (
+      <section style={{ maxWidth: 520, margin: '0 auto', paddingTop: 'clamp(48px, 10vh, 100px)' }}>
+        <span className="eyebrow amber">Join a game</span>
+        <h1 className="h1" style={{ marginTop: 14 }}>Enter the code</h1>
+        <p className="h3" style={{ marginTop: 14, maxWidth: 460 }}>
+          Paste the room code your opponent shared with you. You'll enter your name on the next screen.
+        </p>
+
+        <div className="card" style={{ marginTop: 32 }}>
+          <label>Room code</label>
+          <input
+            type="text"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="e.g. ABC12345"
+            autoFocus
+            style={{ textTransform: 'uppercase', letterSpacing: '0.1em' }}
+            onKeyDown={(e) => { if (e.key === 'Enter') joinWithCode(); }}
+          />
+          <div style={{ height: 16 }} />
+          <div className="row-wrap">
+            <button
+              className="btn big"
+              disabled={!code.trim() || busy}
+              onClick={joinWithCode}
+            >
+              {busy ? 'Joining…' : 'Continue →'}
+            </button>
+            <button className="btn ghost" onClick={() => { setView('idle'); setErr(null); }}>
+              Back
+            </button>
+          </div>
+          {err && <div style={{ marginTop: 12 }}><span className="pill err">{err}</span></div>}
+        </div>
+      </section>
+    );
   }
 
   return (
     <section>
       <span className="eyebrow amber">Head-to-Head</span>
-      <h1 className="h1" style={{ marginTop: 14 }}>
-        The big <span style={{ color: 'var(--amber)' }}>showdown</span> starts at 8:00 PM.
-      </h1>
-      <p className="h3" style={{ marginTop: 18, maxWidth: 620 }}>
-        Type against someone live. Reserve a slot for the scheduled bracket, or
-        spin up an instant 1v1 with three shared links and race right now.
+      <h1 className="h1" style={{ marginTop: 14 }}>Race a friend</h1>
+      <p className="h3" style={{ marginTop: 16, maxWidth: 580 }}>
+        Create a room and share the code, or jump into an existing room with a code from your opponent.
+        60 seconds, live scoring, winner revealed.
       </p>
 
-      <div className="card hero-panel schema" style={{ marginTop: 40 }}>
-        <span className="eyebrow">Countdown to showdown</span>
-        <Countdown8pm />
-      </div>
-
-      <div className="grid2" style={{ marginTop: 24 }}>
+      <div className="grid2" style={{ marginTop: 40 }}>
         <div className="card schema">
-          <span className="eyebrow amber">Instant 1v1</span>
-          <h2 className="h2" style={{ marginTop: 10 }}>Race a friend now</h2>
+          <span className="eyebrow amber">New game</span>
+          <h2 className="h2" style={{ marginTop: 10 }}>Create a room</h2>
           <p className="h3" style={{ marginTop: 10 }}>
-            Create a room, get three links (Player 1, Player 2, spectator), and
-            send them out. 60 seconds, live scoreboard, winner revealed.
+            Start a new game and get a shareable code for your opponent.
           </p>
-          <div className="row-wrap" style={{ marginTop: 22 }}>
-            <button className="btn big" disabled={creating} onClick={startInstant}>
-              {creating ? 'Creating…' : 'Start a 1v1'}
+          <div style={{ marginTop: 22 }}>
+            <button className="btn big" disabled={busy} onClick={createRoom}>
+              {busy ? 'Creating…' : 'Create room'}
             </button>
-            {err && <span className="pill err">{err}</span>}
           </div>
+          <p className="h3" style={{ marginTop: 12, color: 'var(--muted)' }}>
+            You'll enter your name on the next screen.
+          </p>
         </div>
 
         <div className="card schema">
-          <span className="eyebrow">Scheduled showdown</span>
-          <h2 className="h2" style={{ marginTop: 10 }}>Reserve a slot</h2>
+          <span className="eyebrow">Join game</span>
+          <h2 className="h2" style={{ marginTop: 10 }}>Join a room</h2>
           <p className="h3" style={{ marginTop: 10 }}>
-            Drop your name in the queue and we'll call you up when it's your
-            turn at the main stage.
+            Have a code? Enter it to join your opponent's room as Player 2.
           </p>
-          <div className="row-wrap" style={{ marginTop: 22 }}>
-            <Link className="btn big ghost" href="/signup">
-              Reserve a slot
-            </Link>
+          <div style={{ marginTop: 22 }}>
+            <button className="btn big ghost" onClick={() => { setView('joining'); setErr(null); }}>
+              Join with code
+            </button>
           </div>
         </div>
       </div>
+
+      {err && <div style={{ marginTop: 16 }}><span className="pill err">{err}</span></div>}
     </section>
   );
-}
-
-/* Live countdown to the next occurrence of 8:00 PM local time. */
-function Countdown8pm() {
-  const [now, setNow] = useState<number | null>(null);
-  useEffect(() => {
-    setNow(Date.now());
-    const iv = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(iv);
-  }, []);
-
-  if (now == null) {
-    return <div style={{ marginTop: 20, height: 160 }} />;
-  }
-
-  const target = next8pm();
-  let remaining = Math.max(0, Math.floor((target.getTime() - now) / 1000));
-  const days = Math.floor(remaining / 86400); remaining -= days * 86400;
-  const hours = Math.floor(remaining / 3600); remaining -= hours * 3600;
-  const minutes = Math.floor(remaining / 60);
-  const seconds = remaining % 60;
-
-  return (
-    <div>
-      <div
-        style={{
-          marginTop: 18,
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: 14,
-        }}
-      >
-        <TimeBlock label="Days" value={days} />
-        <TimeBlock label="Hours" value={hours} />
-        <TimeBlock label="Minutes" value={minutes} />
-        <TimeBlock label="Seconds" value={seconds} accent />
-      </div>
-      <div className="h3" style={{ marginTop: 20 }}>
-        Target: {target.toLocaleString(undefined, {
-          weekday: 'long', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-        })}
-      </div>
-    </div>
-  );
-}
-
-function TimeBlock({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
-  return (
-    <div
-      style={{
-        background: 'var(--panel-2)',
-        border: '1px solid var(--border)',
-        borderRadius: 16,
-        padding: '22px 18px',
-        textAlign: 'center',
-      }}
-    >
-      <div
-        style={{
-          fontFamily: 'var(--font-display)',
-          fontWeight: 700,
-          fontSize: 'clamp(2.5rem, 5vw, 4rem)',
-          color: accent ? 'var(--amber)' : 'var(--fg)',
-          fontVariantNumeric: 'tabular-nums',
-          letterSpacing: '-0.02em',
-          lineHeight: 1,
-        }}
-      >
-        {String(value).padStart(2, '0')}
-      </div>
-      <div
-        style={{
-          marginTop: 10,
-          fontFamily: 'var(--font-display)',
-          fontSize: 11,
-          fontWeight: 600,
-          letterSpacing: '0.22em',
-          textTransform: 'uppercase',
-          color: 'var(--muted)',
-        }}
-      >
-        {label}
-      </div>
-    </div>
-  );
-}
-
-function next8pm(): Date {
-  const now = new Date();
-  const target = new Date(now);
-  target.setHours(20, 0, 0, 0);
-  if (target.getTime() <= now.getTime()) {
-    target.setDate(target.getDate() + 1);
-  }
-  return target;
 }

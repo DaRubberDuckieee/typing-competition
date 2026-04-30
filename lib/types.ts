@@ -9,15 +9,22 @@ export type Player = {
 export type RaceRow = {
   id: string;
   event_day: string;
-  p1_id: string;
-  p2_id: string;
+  // Nullable for booth flow: a race exists with one lane filled while we wait
+  // for the other player to sit down at the second laptop.
+  p1_id: string | null;
+  p2_id: string | null;
   passage_id: string;
+  // Booth races pre-pick this list at creation; both lanes use the same
+  // sequence. Legacy admin races leave this null and use only `passage_id`.
+  passage_ids: string[] | null;
   duration_s: number;
   countdown_started_at: string | null;
   starts_at: string | null;
   ends_at: string | null;
   ended_at: string | null;
-  status: 'pending' | 'running' | 'done' | 'aborted';
+  // 'waiting' is the booth-flow lobby state (one lane filled). Existing
+  // admin-managed flow goes straight to 'pending' so 'waiting' is opt-in.
+  status: 'waiting' | 'pending' | 'running' | 'done' | 'aborted';
   p1_text: string | null;
   p2_text: string | null;
   p1_submitted_at: string | null;

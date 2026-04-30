@@ -72,18 +72,43 @@ export default function SpectatorPage() {
       </div>
 
       <div className="row-wrap" style={{ marginTop: 32 }}>
-        <button
-          className="btn huge"
-          disabled={room.status !== 'ready'}
-          onClick={async () => {
-            try { await api(`/api/h2h/${room.id}/start`, { method: 'POST', body: '{}' }); } catch {}
-          }}
-        >
-          {room.status === 'ready' ? 'Start the race' : 'Waiting for both players…'}
-        </button>
+        <SpectatorStartButton room={room} />
         <Link className="btn ghost" href="/head-to-head">Back to Head-to-Head</Link>
       </div>
     </div>
+  );
+}
+
+// Gates on both names being present rather than `status === 'ready'`
+// because a concurrent-join race can leave the room at 'waiting' with both
+// names set. Surfaces start errors so silent failures don't masquerade as
+// "won't start".
+function SpectatorStartButton({ room }: { room: any }) {
+  const bothReady = !!(room.p1_name && room.p2_name);
+  const [starting, setStarting] = useState(false);
+  const [startErr, setStartErr] = useState<string | null>(null);
+  return (
+    <>
+      <button
+        className="btn huge"
+        disabled={!bothReady || starting}
+        onClick={async () => {
+          if (starting) return;
+          setStarting(true); setStartErr(null);
+          try {
+            await api(`/api/h2h/${room.id}/start`, { method: 'POST', body: '{}' });
+          } catch (e: any) {
+            setStartErr(e?.message || 'could not start the race');
+            setStarting(false);
+          }
+        }}
+      >
+        {starting ? 'Starting…' : bothReady ? 'Start the race' : 'Waiting for both players…'}
+      </button>
+      {startErr && (
+        <span className="pill err" style={{ marginLeft: 12 }}>{startErr}</span>
+      )}
+    </>
   );
 }
 

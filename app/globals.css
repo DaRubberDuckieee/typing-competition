@@ -565,7 +565,9 @@ table.lb .rank {
 .fade-in.delay-2 { animation-delay: 160ms; }
 .fade-in.delay-3 { animation-delay: 240ms; }
 
-/* Post-race flashes on the per-player result page. */
+/* Post-race flashes on the per-player result page. The booth flow uses a
+ * full-viewport overlay version (booth-flash-*) so the color flood reads on
+ * the HDMI-mirrored screens above the laptops. */
 @keyframes flash-green {
   0%, 100% { background-color: transparent; box-shadow: none; }
   50% { background-color: rgba(95, 168, 163, 0.22); box-shadow: inset 0 0 120px rgba(95, 168, 163, 0.28); }
@@ -574,15 +576,121 @@ table.lb .rank {
   0%, 100% { background-color: transparent; box-shadow: none; }
   50% { background-color: rgba(201, 122, 74, 0.22); box-shadow: inset 0 0 120px rgba(201, 122, 74, 0.3); }
 }
-.flash-winner {
-  animation: flash-green 1200ms ease-in-out 6;
-  border-radius: 24px;
+.flash-winner { animation: flash-green 1200ms ease-in-out 6; border-radius: 24px; }
+.flash-loser  { animation: flash-red   1200ms ease-in-out 6; border-radius: 24px; }
+.flash-tie    { /* no flash, neutral background */ }
+
+/* --- Booth result flash (full-viewport color flood) ------------------- */
+.booth-flash {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center;
+  padding: clamp(28px, 6vw, 80px);
+  overflow: hidden;
 }
-.flash-loser {
-  animation: flash-red 1200ms ease-in-out 6;
-  border-radius: 24px;
+.booth-flash::before {
+  content: '';
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 0;
 }
-.flash-tie { /* no flash, neutral background */ }
+.booth-flash.is-winner::before {
+  background: radial-gradient(ellipse at center, rgba(95, 168, 163, 0.45), rgba(95, 168, 163, 0.08) 60%, transparent 80%);
+  animation: booth-pulse-green 1400ms ease-in-out infinite;
+}
+.booth-flash.is-loser::before {
+  background: radial-gradient(ellipse at center, rgba(201, 122, 74, 0.45), rgba(201, 122, 74, 0.08) 60%, transparent 80%);
+  animation: booth-pulse-red 1400ms ease-in-out infinite;
+}
+.booth-flash.is-tie::before {
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.1), transparent 70%);
+}
+.booth-flash > * { position: relative; z-index: 1; }
+@keyframes booth-pulse-green {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+@keyframes booth-pulse-red {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+.booth-flash__verdict {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(4rem, 14vw, 12rem);
+  letter-spacing: -0.04em;
+  line-height: 0.9;
+  margin: 0;
+}
+.booth-flash.is-winner .booth-flash__verdict { color: var(--ok); text-shadow: 0 0 30px rgba(95,168,163,0.5); }
+.booth-flash.is-loser  .booth-flash__verdict { color: var(--mars); text-shadow: 0 0 30px rgba(201,122,74,0.5); }
+.booth-flash.is-tie    .booth-flash__verdict { color: var(--fg); }
+.booth-flash__rank {
+  margin-top: clamp(16px, 2vw, 28px);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.4rem, 3vw, 2.2rem);
+  letter-spacing: -0.01em;
+  color: var(--fg);
+  padding: 12px 24px;
+  border-radius: 9999px;
+  background: rgba(0,0,0,0.32);
+  border: 1px solid var(--border-strong);
+}
+.booth-flash__rank-num { color: var(--amber); margin: 0 4px; }
+.booth-flash__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: clamp(14px, 2vw, 28px);
+  margin-top: clamp(28px, 5vw, 48px);
+  width: 100%;
+  max-width: 880px;
+}
+.booth-flash__stat {
+  background: rgba(0,0,0,0.32);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: clamp(18px, 2.4vw, 32px);
+}
+.booth-flash__stat .lbl {
+  font-family: var(--font-display);
+  font-size: 12px; font-weight: 600;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--muted);
+}
+.booth-flash__stat .num {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  line-height: 1;
+  margin-top: 8px;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Confetti for the winner. Pure CSS — 24 absolutely-positioned squares
+ * falling with staggered delays. Cheap and effective. */
+.confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.confetti span {
+  position: absolute;
+  top: -10vh;
+  width: 8px; height: 14px;
+  opacity: 0.9;
+  animation: confetti-fall 3s linear infinite;
+}
+@keyframes confetti-fall {
+  to {
+    transform: translateY(120vh) rotate(720deg);
+    opacity: 0;
+  }
+}
 
 /* Spectator winner banner: scale-in + subtle shimmer. */
 @keyframes reveal-pop {
@@ -606,6 +714,9 @@ table.lb .rank {
   .flash-winner,
   .flash-loser,
   .winner-banner.reveal,
-  .winner-card { animation: none !important; }
+  .winner-card,
+  .booth-flash::before,
+  .confetti span { animation: none !important; }
+  .confetti { display: none; }
   * { transition: none !important; }
 }

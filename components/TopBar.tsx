@@ -2,40 +2,22 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-// Primary nav the public sees. Staff-only pages (Admin, Lane 1/2, Final) are
-// reachable by URL but not advertised in the header.
-const LINKS: [string, string][] = [
-  ['Play', '/play'],
-  ['Head to Head', '/head-to-head'],
-  ['Leaderboard', '/leaderboard'],
-];
-const STAFF_LINKS: [string, string][] = [
-  ['Admin', '/admin'],
-];
-
+// Booth-mode chrome:
+//  - The landing page (/) IS the leaderboard, so we don't need a leaderboard
+//    link. The retired /head-to-head + /play flows are kept reachable by URL
+//    for fallback testing but no longer advertised.
+//  - On /booth/* the bar is hidden entirely so the full-viewport result
+//    flash + countdown can take over the screen without a sticky header
+//    fighting their z-index.
+//  - The admin route is retired — the conference flow is fully self-serve.
 export default function TopBar() {
   const path = usePathname();
+  if (path?.startsWith('/booth')) return null;
   return (
     <div className="topbar">
-      <Link href="/" className="brand" aria-label="Typing Competition home">
-        Typing Competition
+      <Link href="/" className="brand" aria-label="Braintrust Typing Competition home">
+        Braintrust · Typing Competition
       </Link>
-      <div className="spacer" />
-      {LINKS.map(([label, href]) => (
-        <Link key={href} href={href} className={path === href ? 'active' : ''}>
-          {label}
-        </Link>
-      ))}
-      {STAFF_LINKS.map(([label, href]) => (
-        <Link
-          key={href}
-          href={href}
-          className={path === href ? 'active' : ''}
-          style={{ opacity: 0.55 }}
-        >
-          {label}
-        </Link>
-      ))}
     </div>
   );
 }

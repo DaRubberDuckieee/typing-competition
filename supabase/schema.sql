@@ -16,15 +16,24 @@ values (1, to_char(now(), 'YYYY-MM-DD'), 'running')
 on conflict (id) do nothing;
 
 -- --------- Players ---------
+-- `phone` is the cross-day identity anchor for booth players (the conference
+-- runs across multiple days; same person should be recognized on day 2/3).
+-- Stored as E.164. The booth API requires it; the column itself stays
+-- nullable so legacy/admin rows without a phone can coexist.
 create table if not exists public.players (
   id text primary key,
   name text not null,
   title text,
   company text,
+  phone text,
   event_day text not null,
-  created_at timestamptz not null default now(),
-  unique (event_day, name, company)
+  created_at timestamptz not null default now()
 );
+-- Migrations for existing projects:
+alter table public.players add column if not exists phone text;
+alter table public.players drop constraint if exists players_event_day_name_company_key;
+-- Partial unique: enforce one row per phone, but allow multiple null-phone rows.
+create unique index if not exists players_phone_unique on public.players (phone) where phone is not null;
 
 -- --------- Queue ---------
 create table if not exists public.queue (
@@ -40,11 +49,15 @@ create index if not exists idx_queue_day on public.queue (event_day, status);
 -- --------- Races ---------
 -- Race timing is stored as absolute timestamps so the client can compute
 -- remaining time from its local wall clock. No server-side setTimeout.
+--
+-- For booth flow: p1_id and p2_id can be null while a race is in 'waiting'
+-- status (one player has joined and we're waiting for the other lane).
+-- Once both are set, status flips to 'pending' (countdown).
 create table if not exists public.races (
   id text primary key,
   event_day text not null,
-  p1_id text not null references public.players(id),
-  p2_id text not null references public.players(id),
+  p1_id text references public.players(id),
+  p2_id text references public.players(id),
   passage_id text not null,
   duration_s int not null,
   countdown_started_at timestamptz,
@@ -69,6 +82,13 @@ create table if not exists public.races (
   winner_id text,
   created_at timestamptz not null default now()
 );
+-- Multi-passage race support. Booth races pre-pick a list of passage IDs at
+-- creation so both lanes type the exact same sequence; legacy admin races
+-- leave this null and use the single-passage `passage_id` field.
+alter table public.races add column if not exists passage_ids jsonb;
+-- Migration for existing projects (additive: relax NOT NULL on player ids).
+alter table public.races alter column p1_id drop not null;
+alter table public.races alter column p2_id drop not null;
 create index if not exists idx_races_day on public.races (event_day, status);
 create index if not exists idx_races_day_created on public.races (event_day, created_at desc);
 
@@ -138,8 +158,13 @@ create table if not exists public.solo_runs (
 );
 -- Migration for existing projects:
 alter table public.solo_runs add column if not exists segments jsonb;
+-- Day-end "final event" runs are stored in this same table but tagged so
+-- the per-day event leaderboard can filter for them. Defaults to false so
+-- the regular /play solo runs are unaffected.
+alter table public.solo_runs add column if not exists is_event_run boolean default false;
 create index if not exists idx_solo_day on public.solo_runs (event_day, status);
 create index if not exists idx_solo_day_created on public.solo_runs (event_day, created_at desc);
+create index if not exists idx_solo_event on public.solo_runs (event_day, is_event_run, status);
 
 -- --------- Head-to-head rooms (instant 1v1) ---------
 -- Two-player real-time race with three shared URLs: two players + one spectator.

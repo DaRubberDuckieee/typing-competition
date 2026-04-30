@@ -11,16 +11,17 @@ import { useRoom } from '@/components/useRoom';
 export default function PlayerPage() {
   const { id, lane } = useParams<{ id: string; lane: string }>();
   const laneNum = lane === '1' ? '1' : lane === '2' ? '2' : null;
-  const { room, passageText, error } = useRoom(id);
+  const { room, passageText, error, refresh } = useRoom(id);
+  const [joinedLocally, setJoinedLocally] = useState(false);
 
   if (!laneNum) return <div className="h2" style={{ padding: 40 }}>Invalid lane.</div>;
   if (error)   return <div className="h2" style={{ padding: 40 }}>Room not found.</div>;
   if (!room)   return <div className="h2" style={{ padding: 40 }}>Loading room…</div>;
 
   const myName = laneNum === '1' ? room.p1_name : room.p2_name;
-  const myJoined = !!myName;
+  const myJoined = !!myName || joinedLocally;
 
-  if (!myJoined) return <JoinStep roomId={id} lane={laneNum} otherName={laneNum === '1' ? room.p2_name : room.p1_name} />;
+  if (!myJoined) return <JoinStep roomId={id} lane={laneNum} otherName={laneNum === '1' ? room.p2_name : room.p1_name} onJoined={() => { setJoinedLocally(true); refresh(); }} />;
 
   if (room.status === 'waiting' || room.status === 'ready') {
     return <WaitingStep room={room} laneNum={laneNum} />;
@@ -37,8 +38,8 @@ export default function PlayerPage() {
 /* ------------------------------ Join step ------------------------------ */
 
 function JoinStep({
-  roomId, lane, otherName,
-}: { roomId: string; lane: '1' | '2'; otherName: string | null }) {
+  roomId, lane, otherName, onJoined,
+}: { roomId: string; lane: '1' | '2'; otherName: string | null; onJoined: () => void }) {
   const [name, setName] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -50,9 +51,11 @@ function JoinStep({
         method: 'POST',
         body: JSON.stringify({ lane, name }),
       });
+      onJoined();
     } catch (e: any) {
       setErr(e.message || 'could not join');
-    } finally { setSaving(false); }
+      setSaving(false);
+    }
   }
 
   const accent = lane === '1' ? 'var(--cyan)' : 'var(--amber)';
@@ -88,25 +91,78 @@ function JoinStep({
 
 function WaitingStep({ room, laneNum }: { room: any; laneNum: '1' | '2' }) {
   const otherName = laneNum === '1' ? room.p2_name : room.p1_name;
+  const myName = laneNum === '1' ? room.p1_name : room.p2_name;
   const accent = laneNum === '1' ? 'var(--cyan)' : 'var(--amber)';
+  // Gate on both names being present, not status. The server normally flips
+  // status to 'ready' on the second join, but a concurrent-join race or a
+  // missed Realtime tick can leave it at 'waiting'. Either way, if both
+  // lanes are named, we're good to start.
+  const bothReady = !!(room.p1_name && room.p2_name);
+  const [starting, setStarting] = useState(false);
+  const [startErr, setStartErr] = useState<string | null>(null);
+
+  async function startGame() {
+    if (starting) return;
+    setStarting(true); setStartErr(null);
+    try {
+      await api(`/api/h2h/${room.id}/start`, { method: 'POST', body: '{}' });
+      // Polling / realtime in useRoom will pick up status='running' and the
+      // PlayerPage will swap to <TypingStep>. We intentionally don't reset
+      // `starting` so the button stays disabled until the transition.
+    } catch (e: any) {
+      setStartErr(e?.message || 'could not start the game');
+      setStarting(false);
+    }
+  }
+
   return (
     <div className="full-stage" style={{ alignItems: 'center', textAlign: 'center', paddingTop: 'clamp(48px, 10vh, 120px)' }}>
-      <span className="eyebrow" style={{ color: accent }}>Player {laneNum}</span>
-      <h1 className="h1" style={{ marginTop: 14 }}>Waiting…</h1>
-      <p className="h3" style={{ marginTop: 16, maxWidth: 560 }}>
-        {otherName
-          ? <>Both players locked in. The spectator will press start any moment now.</>
-          : <>We're waiting for the other player to join. Share your spectator link if they haven't yet.</>}
-      </p>
-      <div className="row-wrap" style={{ marginTop: 32, justifyContent: 'center' }}>
+      <span className="eyebrow" style={{ color: accent }}>Player {laneNum} · {myName}</span>
+      <h1 className="h1" style={{ marginTop: 14 }}>
+        {bothReady ? 'Ready to race!' : 'Waiting for opponent…'}
+      </h1>
+
+      <div className="card" style={{ marginTop: 32, maxWidth: 340, width: '100%', textAlign: 'center' }}>
+        <span className="eyebrow">Room code</span>
+        <div
+          style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 'clamp(1.8rem, 5vw, 2.8rem)',
+            fontWeight: 700,
+            letterSpacing: '0.18em',
+            marginTop: 8,
+            color: 'var(--amber)',
+          }}
+        >
+          {room.id.toUpperCase()}
+        </div>
+      </div>
+
+      <div className="row-wrap" style={{ marginTop: 24, justifyContent: 'center' }}>
         <span className="pill ok">
           <span className="status-dot ok" /> You're in
         </span>
         <span className={'pill ' + (otherName ? 'ok' : '')}>
           <span className={'status-dot ' + (otherName ? 'ok' : '')} />
-          Opponent {otherName ? 'in' : 'not joined'}
+          {otherName ? `${otherName} joined` : 'Waiting for opponent'}
         </span>
       </div>
+
+      {bothReady && (
+        <div style={{ marginTop: 36 }}>
+          <button className="btn huge" disabled={starting} onClick={startGame}>
+            {starting ? 'Starting…' : 'Start game'}
+          </button>
+          <p className="h3" style={{ marginTop: 12, color: 'var(--muted)' }}>
+            Either player can start.
+          </p>
+          {startErr && (
+            <div style={{ marginTop: 12 }}>
+              <span className="pill err">{startErr}</span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

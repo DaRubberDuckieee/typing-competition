@@ -2,6 +2,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabaseBrowser } from '@/lib/supabase';
 
+// sessionStorage key used to hand off a freshly-joined room from
+// /head-to-head -> /h2h/[id]/[lane] so the player page hydrates instantly
+// without waiting for the next fetch/realtime tick.
+export const ROOM_HYDRATE_KEY = 'h2h:hydrate';
+
 export type Room = {
   id: string;
   passage_id: string;
@@ -38,8 +43,11 @@ export function useRoom(id: string): {
   refresh: () => void;
   error: string | null;
 } {
-  const [room, setRoom] = useState<Room | null>(null);
-  const [passageText, setPassageText] = useState('');
+  // Hydrate from sessionStorage handoff so the very first paint already
+  // reflects the latest known room state (e.g. right after a join API call).
+  const initial = readHydrate(id);
+  const [room, setRoom] = useState<Room | null>(initial?.room ?? null);
+  const [passageText, setPassageText] = useState(initial?.passageText ?? '');
   const [error, setError] = useState<string | null>(null);
   const pending = useRef<any>(null);
 
@@ -65,6 +73,16 @@ export function useRoom(id: string): {
     }, 100);
   }, [fetchNow]);
 
+  // Adaptive poll cadence. Realtime is best-effort (and may be disabled at
+  // the project level); polling is the fallback that guarantees the lobby
+  // and live race feel responsive.
+  const status = room?.status;
+  const pollMs = status === 'waiting' || status === 'ready'
+    ? 1000           // lobby: must feel instant when opponent joins / start fires
+    : status === 'running'
+      ? 2000         // race: spectator/peer view; in-band submits drive the typing UI
+      : 10000;       // done / unknown
+
   useEffect(() => {
     fetchNow();
     let sb: ReturnType<typeof supabaseBrowser> | null = null;
@@ -80,12 +98,36 @@ export function useRoom(id: string): {
         )
         .subscribe();
     }
-    const iv = setInterval(fetchNow, 5000);
+    const iv = setInterval(fetchNow, pollMs);
+    // Also refetch the moment the user returns to this tab — important for
+    // multi-window testing where one window was backgrounded while the
+    // other player joined.
+    const onVis = () => { if (document.visibilityState === 'visible') fetchNow(); };
+    const onFocus = () => fetchNow();
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onFocus);
     return () => {
       if (channel && sb) sb.removeChannel(channel);
       clearInterval(iv);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onFocus);
     };
-  }, [id, fetchNow, debounced]);
+  }, [id, fetchNow, debounced, pollMs]);
 
   return { room, passageText, refresh: fetchNow, error };
+}
+
+function readHydrate(id: string): { room: Room; passageText: string } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(ROOM_HYDRATE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    // One-shot: clear after read so we don't pin stale state on revisits.
+    window.sessionStorage.removeItem(ROOM_HYDRATE_KEY);
+    if (parsed?.room?.id === id) return parsed;
+    return null;
+  } catch {
+    return null;
+  }
 }
