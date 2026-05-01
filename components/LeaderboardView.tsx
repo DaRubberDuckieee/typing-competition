@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
+import { currentUtcDateKey, formatUtcDateLabel } from '@/lib/dateLabels';
 
 type LBRow = {
   player_id: string;
@@ -62,6 +63,20 @@ export function LeaderboardView({
   const [eventRows, setEventRows] = useState<EventLBRow[]>([]);
   const [eventDays, setEventDays] = useState<string[]>([]);
   const [eventDay, setEventDay] = useState<string | null>(null);
+  const [currentDateKey, setCurrentDateKey] = useState<string | null>(null);
+  const currentDateLabel = currentDateKey ? formatUtcDateLabel(currentDateKey) : null;
+  const eventEmptyDateLabel = eventDay
+    ? formatUtcDateLabel(eventDay)
+    : currentDateLabel || 'today';
+  const qualifierEmptyCopy = currentDateLabel
+    ? (scope === 'today'
+        ? `No scores yet for ${currentDateLabel} — be the first.`
+        : `No scores yet as of ${currentDateLabel} — be the first.`)
+    : 'No scores yet — be the first.';
+
+  useEffect(() => {
+    setCurrentDateKey(currentUtcDateKey());
+  }, []);
 
   const load = useCallback(async (s: Scope) => {
     if (s === 'event') return; // handled by loadEvent below
@@ -192,7 +207,7 @@ export function LeaderboardView({
               eventRows.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="center h3" style={{ padding: 32 }}>
-                    No final-event scores yet for this day.
+                    No final-event scores yet for {eventEmptyDateLabel}.
                   </td>
                 </tr>
               ) : (
@@ -218,7 +233,7 @@ export function LeaderboardView({
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={5} className="center h3" style={{ padding: 32 }}>
-                  No scores yet — be the first.
+                  {qualifierEmptyCopy}
                 </td>
               </tr>
             ) : (

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { api } from '@/components/api';
 import { useAppState } from '@/components/useAppState';
+import { currentUtcDateKey, formatUtcDateLabel } from '@/lib/dateLabels';
 
 // Solo "Play" flow:
 //   1. Mount → POST /api/play/start → server assigns a space-themed name + a
@@ -319,6 +320,12 @@ function DoneStep({ run, initialName }: { run: Run; initialName: string }) {
   const myIdx = board.findIndex((r) => r.player_id === run.player_id);
   const myRank = myIdx >= 0 ? myIdx + 1 : null;
   const displayName = savedAs || (myIdx >= 0 ? board[myIdx].name : initialName);
+  const [currentDateKey, setCurrentDateKey] = useState<string | null>(null);
+  const currentDateLabel = currentDateKey ? formatUtcDateLabel(currentDateKey) : null;
+
+  useEffect(() => {
+    setCurrentDateKey(currentUtcDateKey());
+  }, []);
 
   const saveName = useCallback(async () => {
     setSaving(true); setErr(null); setSavedAs(null);
@@ -394,7 +401,13 @@ function DoneStep({ run, initialName }: { run: Run; initialName: string }) {
           </thead>
           <tbody>
             {board.length === 0 && (
-              <tr><td colSpan={4} className="center h3">No scores yet — you'll be first.</td></tr>
+              <tr>
+                <td colSpan={4} className="center h3">
+                  {currentDateLabel
+                    ? `No scores yet for ${currentDateLabel} — you'll be first.`
+                    : "No scores yet — you'll be first."}
+                </td>
+              </tr>
             )}
             {board.map((r, i) => {
               const isMe = r.player_id === run.player_id;
