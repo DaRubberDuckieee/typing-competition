@@ -26,16 +26,16 @@ import { formatPhoneInput } from '@/lib/phone';
 //   - status = done
 //     -> ResultStep  (Phase 4 will animate into the leaderboard)
 //
-// We track `myPlayerId` locally because the lane is keyed in the URL but the
-// player's identity isn't \u2014 it's set once the player submits the InfoForm.
-// On a fresh page load (e.g. after Play again), `myPlayerId` resets and the
-// user gets the InfoForm again for the next race.
+// We track `myPlayerId` and `myRaceId` locally because the lane is keyed in
+// the URL but the player's current session isn't. Once the player submits the
+// InfoForm, polling stays pinned to that race until they tap Play again.
 
 export default function BoothLanePage() {
   const { lane } = useParams<{ lane: string }>();
   const laneNum: '1' | '2' | null = lane === '1' ? '1' : lane === '2' ? '2' : null;
-  const { race, p1, p2, passages, refresh, setSnapshot } = useBoothCurrent();
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
+  const [myRaceId, setMyRaceId] = useState<string | null>(null);
+  const { race, p1, p2, passages, setSnapshot } = useBoothCurrent(myRaceId);
   const [returningInfo, setReturningInfo] = useState<{
     returning: boolean;
     previousBestWpm: number | null;
@@ -60,10 +60,11 @@ export default function BoothLanePage() {
         onJoined={(res) => {
           // Optimistically swap the snapshot so the page renders
           // WaitingForOpponent immediately — don't make the user stare at
-          // "Joining…" while the next poll catches up. The polled state
-          // (1s cadence in lobby) will overwrite this with the canonical
-          // server snapshot a beat later.
+          // "Joining…" while the next poll catches up. The polled state is
+          // pinned to this race, so a newer active booth race cannot steal
+          // focus before we show results.
           setMyPlayerId(res.playerId);
+          setMyRaceId(res.race.id);
           setReturningInfo({
             returning: res.returning,
             previousBestWpm: res.previousBestWpm,
@@ -89,7 +90,6 @@ export default function BoothLanePage() {
             p2: laneNum === '2' ? myPlayer : null,
             passages,
           });
-          refresh();
         }}
       />
     );
@@ -117,6 +117,7 @@ export default function BoothLanePage() {
         // the next race. boothSitDown will create a fresh race when this
         // user submits because findOpenBoothRace excludes 'done' rows.
         setMyPlayerId(null);
+        setMyRaceId(null);
         setReturningInfo(null);
       }}
     />

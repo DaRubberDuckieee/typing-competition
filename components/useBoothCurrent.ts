@@ -57,7 +57,7 @@ export type BoothSnapshot = {
 // Realtime is best-effort: a Supabase channel subscribed to the races table
 // triggers a debounced refetch on any change. If realtime isn't reachable
 // or the publication is misconfigured, polling keeps the UI fresh.
-export function useBoothCurrent(): BoothSnapshot & {
+export function useBoothCurrent(targetRaceId?: string | null): BoothSnapshot & {
   refresh: () => void;
   // Caller can hand in a freshly-fetched snapshot (e.g. the response from
   // POST /api/booth/sit-down) so the page renders the new state immediately
@@ -78,16 +78,21 @@ export function useBoothCurrent(): BoothSnapshot & {
   // was the bug where the form re-mounted and reset itself.
   const generationRef = useRef(0);
 
+  useEffect(() => {
+    generationRef.current += 1;
+  }, [targetRaceId]);
+
   const fetchNow = useCallback(async () => {
     const startGen = generationRef.current;
     try {
-      const r = await fetch('/api/booth/current', { cache: 'no-store' });
+      const qs = targetRaceId ? `?raceId=${encodeURIComponent(targetRaceId)}` : '';
+      const r = await fetch(`/api/booth/current${qs}`, { cache: 'no-store' });
       if (!r.ok) return;
       const j = (await r.json()) as BoothSnapshot;
       if (generationRef.current !== startGen) return;
       setSnap(j);
     } catch {}
-  }, []);
+  }, [targetRaceId]);
 
   // External callers (e.g. the booth lane page after a successful sit-down)
   // hand in an authoritative snapshot we should render immediately; any
