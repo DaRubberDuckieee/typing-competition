@@ -392,10 +392,42 @@ export async function boothSitDown(input: {
   };
 }
 
+type BoothCurrentSnapshot = {
+  race: RaceRow | null;
+  p1: any | null;
+  p2: any | null;
+  passages: { id: string; text: string }[];
+};
+
+async function expandBoothRace(race: RaceRow | null): Promise<BoothCurrentSnapshot> {
+  if (!race) return { race: null, p1: null, p2: null, passages: [] };
+
+  const sb = supabaseServer();
+  const idList = (race.passage_ids && race.passage_ids.length > 0)
+    ? race.passage_ids
+    : [race.passage_id];
+  const passages = idList.map((pid) => {
+    const p = getPassage(pid);
+    return { id: p.id, text: p.text };
+  });
+  const ids = [race.p1_id, race.p2_id].filter(Boolean) as string[];
+  let p1: any = null;
+  let p2: any = null;
+  if (ids.length > 0) {
+    const { data: players } = await sb.from('players').select('*').in('id', ids);
+    const byId = new Map((players || []).map((p: any) => [p.id, p]));
+    p1 = race.p1_id ? byId.get(race.p1_id) || null : null;
+    p2 = race.p2_id ? byId.get(race.p2_id) || null : null;
+  }
+  return { race, p1, p2, passages };
+}
+
 // Snapshot the booth's "current" race for the booth lane page.
 // Returns the most recent race for today plus both player rows and the
 // ordered list of passages for this race (booth races pre-pick 8). Callers
-// should not cache this (use no-store at the route).
+// should not cache this (use no-store at the route). If a race id is provided,
+// return that race instead so a joined laptop stays attached to its own
+// session through the result screen.
 //
 // IMPORTANT: filters by todayString() (real UTC date) to match what
 // boothSitDown writes. Using the static `event` row's event_day here would
@@ -412,14 +444,19 @@ export async function boothSitDown(input: {
 //   2. Otherwise the most recently created done/aborted race — so the
 //      booth lane page can show the result screen for the race that
 //      just finished.
-export async function boothCurrent(): Promise<{
-  race: RaceRow | null;
-  p1: any | null;
-  p2: any | null;
-  passages: { id: string; text: string }[];
-}> {
+export async function boothCurrent(raceId?: string): Promise<BoothCurrentSnapshot> {
   const sb = supabaseServer();
   const today = todayString();
+
+  if (raceId) {
+    const { data: requested } = await sb
+      .from('races')
+      .select('*')
+      .eq('id', raceId)
+      .maybeSingle();
+    if (requested) return expandBoothRace(requested as RaceRow);
+  }
+
   // Pull a handful of candidate active races and pick the freshest in JS.
   // We can't `coalesce(starts_at, created_at)` in supabase-js' .order(), so
   // we do the recency math here. We also filter out zombie 'running' rows
@@ -457,24 +494,7 @@ export async function boothCurrent(): Promise<{
       .limit(1);
     race = (done?.[0] as RaceRow) || null;
   }
-  if (!race) return { race: null, p1: null, p2: null, passages: [] };
-  const idList = (race.passage_ids && race.passage_ids.length > 0)
-    ? race.passage_ids
-    : [race.passage_id];
-  const passages = idList.map((pid) => {
-    const p = getPassage(pid);
-    return { id: p.id, text: p.text };
-  });
-  const ids = [race.p1_id, race.p2_id].filter(Boolean) as string[];
-  let p1: any = null;
-  let p2: any = null;
-  if (ids.length > 0) {
-    const { data: players } = await sb.from('players').select('*').in('id', ids);
-    const byId = new Map((players || []).map((p: any) => [p.id, p]));
-    p1 = race.p1_id ? byId.get(race.p1_id) || null : null;
-    p2 = race.p2_id ? byId.get(race.p2_id) || null : null;
-  }
-  return { race, p1, p2, passages };
+  return expandBoothRace(race);
 }
 
 // ---------- Queue ----------
@@ -685,17 +705,18 @@ export async function finalizeRace(raceId: string) {
     }
     let totalCorrect = 0;
     let totalTyped = 0;
-    let totalMs = 0;
     const errors: Record<string, number> = { case_mismatch: 0, transposition: 0, duplicate: 0, other: 0 };
     for (const seg of segs) {
       const target = getPassage(seg.passageId).text;
       const r = classifyAndScore({ target, typed: seg.typed || '', elapsedMs: seg.elapsedMs, durationS });
       totalCorrect += r.correctChars;
       totalTyped += r.typedLen;
-      totalMs += r.elapsedMs;
       for (const k of Object.keys(errors)) errors[k] += (r.errors as any)[k] || 0;
     }
-    totalMs = Math.max(1, Math.min(totalMs, endCapMs));
+    // Booth races are fixed-window runs. Aggregate WPM must include idle time
+    // until the deadline so stopping after one fast passage does not inflate
+    // the score.
+    const totalMs = endCapMs;
     const wpm = Math.round(((totalCorrect / 5) / (totalMs / 60000)) * 10) / 10;
     const acc = Math.round((totalCorrect / Math.max(1, totalTyped)) * 1000) / 10;
     const score = Math.round(wpm * Math.pow(acc / 100, 2) * 10 * 10) / 10;
@@ -1266,7 +1287,7 @@ export async function finalizeSoloRun(runId: string) {
 
   let score = 0, wpm = 0, acc = 0;
   let totalErrors: Record<string, number> = { case_mismatch: 0, transposition: 0, duplicate: 0, other: 0 };
-  let totalCorrect = 0, totalTyped = 0, totalMs = 0;
+  let totalCorrect = 0, totalTyped = 0;
 
   // Resolve segments from either the encoded `typed` field (new) or the
   // legacy jsonb `segments` column if someone happens to have it populated.
@@ -1286,10 +1307,11 @@ export async function finalizeSoloRun(runId: string) {
       });
       totalCorrect += r.correctChars;
       totalTyped += r.typedLen;
-      totalMs += r.elapsedMs;
       for (const k of Object.keys(totalErrors)) totalErrors[k] += (r.errors as any)[k] || 0;
     }
-    totalMs = Math.max(1, Math.min(totalMs, durationS * 1000));
+    // Solo/event runs are fixed-window runs; count the whole window, not just
+    // active completed segment time, so idle time after typing lowers WPM.
+    const totalMs = durationS * 1000;
     wpm = Math.round(((totalCorrect / 5) / (totalMs / 60000)) * 10) / 10;
     acc = Math.round((totalCorrect / Math.max(1, totalTyped)) * 1000) / 10;
     score = Math.round(wpm * Math.pow(acc / 100, 2) * 10 * 10) / 10;
