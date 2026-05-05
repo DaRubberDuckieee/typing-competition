@@ -705,17 +705,18 @@ export async function finalizeRace(raceId: string) {
     }
     let totalCorrect = 0;
     let totalTyped = 0;
-    let totalMs = 0;
     const errors: Record<string, number> = { case_mismatch: 0, transposition: 0, duplicate: 0, other: 0 };
     for (const seg of segs) {
       const target = getPassage(seg.passageId).text;
       const r = classifyAndScore({ target, typed: seg.typed || '', elapsedMs: seg.elapsedMs, durationS });
       totalCorrect += r.correctChars;
       totalTyped += r.typedLen;
-      totalMs += r.elapsedMs;
       for (const k of Object.keys(errors)) errors[k] += (r.errors as any)[k] || 0;
     }
-    totalMs = Math.max(1, Math.min(totalMs, endCapMs));
+    // Booth races are fixed-window runs. Aggregate WPM must include idle time
+    // until the deadline so stopping after one fast passage does not inflate
+    // the score.
+    const totalMs = endCapMs;
     const wpm = Math.round(((totalCorrect / 5) / (totalMs / 60000)) * 10) / 10;
     const acc = Math.round((totalCorrect / Math.max(1, totalTyped)) * 1000) / 10;
     const score = Math.round(wpm * Math.pow(acc / 100, 2) * 10 * 10) / 10;
@@ -1286,7 +1287,7 @@ export async function finalizeSoloRun(runId: string) {
 
   let score = 0, wpm = 0, acc = 0;
   let totalErrors: Record<string, number> = { case_mismatch: 0, transposition: 0, duplicate: 0, other: 0 };
-  let totalCorrect = 0, totalTyped = 0, totalMs = 0;
+  let totalCorrect = 0, totalTyped = 0;
 
   // Resolve segments from either the encoded `typed` field (new) or the
   // legacy jsonb `segments` column if someone happens to have it populated.
@@ -1306,10 +1307,11 @@ export async function finalizeSoloRun(runId: string) {
       });
       totalCorrect += r.correctChars;
       totalTyped += r.typedLen;
-      totalMs += r.elapsedMs;
       for (const k of Object.keys(totalErrors)) totalErrors[k] += (r.errors as any)[k] || 0;
     }
-    totalMs = Math.max(1, Math.min(totalMs, durationS * 1000));
+    // Solo/event runs are fixed-window runs; count the whole window, not just
+    // active completed segment time, so idle time after typing lowers WPM.
+    const totalMs = durationS * 1000;
     wpm = Math.round(((totalCorrect / 5) / (totalMs / 60000)) * 10) / 10;
     acc = Math.round((totalCorrect / Math.max(1, totalTyped)) * 1000) / 10;
     score = Math.round(wpm * Math.pow(acc / 100, 2) * 10 * 10) / 10;
