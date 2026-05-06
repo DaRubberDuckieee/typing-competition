@@ -141,13 +141,15 @@ export function LeaderboardView({
         {showRestartCta ? (
           <Link className="btn huge" href="/">Restart</Link>
         ) : showModePicker && !lockToLane && !onPlayNow ? (
-          <div className="lb-mode-picker">
-            <Link className="btn huge lb-mode-primary" href="/booth/solo">Play solo</Link>
-            <div className="lb-mode-group" aria-label="Race 1v1">
-              <span className="lb-mode-eyebrow">Race 1v1</span>
-              <div className="lb-mode-actions">
-                <Link className="btn big ghost" href="/booth/1">Player 1</Link>
-                <Link className="btn big ghost" href="/booth/2">Player 2</Link>
+          <div className="lb-mode-stack">
+            <div className="lb-mode-picker">
+              <Link className="btn huge lb-mode-primary" href="/booth/solo">Play solo</Link>
+              <div className="lb-mode-group" aria-label="Race 1v1">
+                <span className="lb-mode-eyebrow">Race 1v1</span>
+                <div className="lb-mode-actions">
+                  <Link className="btn big ghost" href="/booth/1">Player 1</Link>
+                  <Link className="btn big ghost" href="/booth/2">Player 2</Link>
+                </div>
               </div>
             </div>
           </div>
@@ -274,10 +276,23 @@ export function LeaderboardView({
         </table>
       </div>
 
+      {scope === 'event' && (
+        <div className="lb-finals-entry">
+          <Link className="btn big ghost" href="/event/play">Enter finals</Link>
+        </div>
+      )}
+
 
       <style jsx>{`
         .lb-view { display: flex; flex-direction: column; gap: 18px; }
         .lb-view__head { text-align: center; }
+        .lb-mode-stack {
+          width: 100%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+        }
         .lb-mode-picker {
           width: 100%;
           display: grid;
@@ -321,6 +336,7 @@ export function LeaderboardView({
           border-radius: 9999px;
           background: rgba(255, 255, 255, 0.025);
         }
+        .lb-finals-entry { display: flex; justify-content: center; margin-top: -4px; }
         @media (max-width: 760px) {
           .lb-mode-picker { grid-template-columns: 1fr; }
           .lb-mode-group {
