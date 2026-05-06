@@ -8,7 +8,7 @@ import { LeaderboardView } from '@/components/LeaderboardView';
 export default function Home() {
   return (
     <section className="booth-landing">
-      <LeaderboardView />
+      <LeaderboardView showModePicker />
       <style jsx>{`
         .booth-landing {
           padding: clamp(32px, 6vw, 96px) 0 96px;

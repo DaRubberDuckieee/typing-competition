@@ -12,9 +12,13 @@ export const fetchCache = 'force-no-store';
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const scope = url.searchParams.get('scope') === 'all' ? 'all' : 'today';
-  const rows = await leaderboard(20, scope);
+  const requestedLimit = Number(url.searchParams.get('limit') || 20);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.max(1, Math.min(1000, Math.floor(requestedLimit)))
+    : 20;
+  const rows = await leaderboard(limit, scope);
   return NextResponse.json(
-    { rows, scope },
+    { rows, scope, limit },
     {
       headers: {
         'cache-control': 'no-store, no-cache, must-revalidate',
