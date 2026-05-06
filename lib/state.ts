@@ -392,6 +392,70 @@ export async function boothSitDown(input: {
   };
 }
 
+// Start a booth-branded solo run. This shares booth identity and leaderboard
+// semantics, but stores the attempt in solo_runs so no opponent/lane pairing is
+// involved.
+export async function startBoothSoloRun(input: {
+  phone: string;
+  name: string;
+  title?: string;
+  company?: string;
+}): Promise<{
+  run: any;
+  player: any;
+  passages: { id: string; text: string }[];
+  returning: boolean;
+  previousBestWpm: number | null;
+  previousBestScore: number | null;
+}> {
+  const sb = supabaseServer();
+  const ev = await getEvent();
+  if (ev.status !== 'running') throw new Error('event_not_running');
+
+  const identity = await findOrCreatePlayerByPhone({
+    phone: input.phone,
+    name: input.name,
+    title: input.title,
+    company: input.company,
+  });
+
+  const passageIds = pickRacePassageIds();
+  const passages = passageIds.map((pid) => {
+    const p = getPassage(pid);
+    return { id: p.id, text: p.text };
+  });
+
+  const durationS = 60;
+  const now = Date.now();
+  const id = nanoid(10);
+  const { data, error } = await sb
+    .from('solo_runs')
+    .insert({
+      id,
+      event_day: todayString(),
+      player_id: identity.player.id,
+      passage_id: passageIds[0],
+      duration_s: durationS,
+      countdown_started_at: new Date(now).toISOString(),
+      starts_at: new Date(now + COUNTDOWN_MS).toISOString(),
+      ends_at: new Date(now + COUNTDOWN_MS + durationS * 1000).toISOString(),
+      status: 'pending',
+      is_event_run: false,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+
+  return {
+    run: data,
+    player: identity.player,
+    passages,
+    returning: identity.returning,
+    previousBestWpm: identity.previousBestWpm,
+    previousBestScore: identity.previousBestScore,
+  };
+}
+
 type BoothCurrentSnapshot = {
   race: RaceRow | null;
   p1: any | null;
