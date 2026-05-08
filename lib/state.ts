@@ -845,14 +845,14 @@ export async function leaderboard(
 ): Promise<LBEntry[]> {
   const sb = supabaseServer();
   const racesQ = sb.from('races')
-    .select('p1_id,p2_id,p1_score,p2_score,p1_acc,p2_acc,ended_at,event_day,status')
+    .select('p1_id,p2_id,p1_score,p2_score,p1_wpm,p2_wpm,p1_acc,p2_acc,ended_at,event_day,status')
     .eq('status', 'done');
   // Qualifying leaderboard excludes Day-Finals event runs — those have
   // their own per-day board on the landing page's "Day finals" tab. NOT
   // (is_event_run = true) matches both `false` and any legacy NULL rows
   // from before the column existed.
   const solosQ = sb.from('solo_runs')
-    .select('player_id,score,acc,ended_at,event_day,status,is_event_run')
+    .select('player_id,score,wpm,acc,ended_at,event_day,status,is_event_run')
     .eq('status', 'done')
     .not('is_event_run', 'eq', true);
   if (scope === 'today') {
@@ -862,8 +862,14 @@ export async function leaderboard(
   }
   const [{ data: races }, { data: solos }] = await Promise.all([racesQ, solosQ]);
 
-  const best = new Map<string, { score: number; acc: number; at: string }>();
-  const consider = (pid: string | null | undefined, sc: number | null | undefined, ac: number | null | undefined, at: string | null | undefined) => {
+  const best = new Map<string, { score: number; wpm: number; acc: number; at: string }>();
+  const consider = (
+    pid: string | null | undefined,
+    sc: number | null | undefined,
+    wpm: number | null | undefined,
+    ac: number | null | undefined,
+    at: string | null | undefined,
+  ) => {
     if (!pid || sc == null) return;
     const cur = best.get(pid);
     if (
@@ -872,15 +878,15 @@ export async function leaderboard(
       (sc === cur.score && (ac || 0) > cur.acc) ||
       (sc === cur.score && (ac || 0) === cur.acc && (at || '') < cur.at)
     ) {
-      best.set(pid, { score: sc, acc: ac || 0, at: at || '' });
+      best.set(pid, { score: sc, wpm: wpm || 0, acc: ac || 0, at: at || '' });
     }
   };
   for (const r of races || []) {
-    consider(r.p1_id, r.p1_score, r.p1_acc, r.ended_at);
-    consider(r.p2_id, r.p2_score, r.p2_acc, r.ended_at);
+    consider(r.p1_id, r.p1_score, r.p1_wpm, r.p1_acc, r.ended_at);
+    consider(r.p2_id, r.p2_score, r.p2_wpm, r.p2_acc, r.ended_at);
   }
   for (const s of solos || []) {
-    consider(s.player_id, s.score, s.acc, s.ended_at);
+    consider(s.player_id, s.score, s.wpm, s.acc, s.ended_at);
   }
 
   if (best.size === 0) return [];
@@ -903,6 +909,7 @@ export async function leaderboard(
         company: p.company,
         best_score: b.score,
         best_acc: b.acc,
+        best_wpm: b.wpm,
         best_at: b.at,
       } as LBEntry;
     })

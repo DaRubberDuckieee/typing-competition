@@ -276,6 +276,7 @@ function DoneStep({ run, initialName }: { run: Run; initialName: string }) {
   // server-side aggregation weirdness.
   const board = useMemo(() => {
     const myScore = Number(run.score ?? 0);
+    const myWpm = Number(run.wpm ?? 0);
     const myAcc = Number(run.acc ?? 0);
     const myNowIso = new Date().toISOString();
     const myName = savedAs || initialName;
@@ -289,6 +290,7 @@ function DoneStep({ run, initialName }: { run: Run; initialName: string }) {
         company: null,
         best_score: myScore,
         best_acc: myAcc,
+        best_wpm: myWpm,
         best_at: myNowIso,
       } as any);
     } else {
@@ -301,6 +303,7 @@ function DoneStep({ run, initialName }: { run: Run; initialName: string }) {
         name: myName,
         best_score: keepCurrent ? myScore : existing.best_score,
         best_acc: keepCurrent ? myAcc : existing.best_acc,
+        best_wpm: keepCurrent ? myWpm : existing.best_wpm,
         best_at: keepCurrent ? myNowIso : existing.best_at,
       };
     }
@@ -314,7 +317,7 @@ function DoneStep({ run, initialName }: { run: Run; initialName: string }) {
         ((a.best_at || '') > (b.best_at || '') ? 1 : -1)
     );
     return rows.slice(0, 20);
-  }, [serverBoard, run.player_id, run.score, run.acc, savedAs, initialName]);
+  }, [serverBoard, run.player_id, run.score, run.wpm, run.acc, savedAs, initialName]);
 
   const myIdx = board.findIndex((r) => r.player_id === run.player_id);
   const myRank = myIdx >= 0 ? myIdx + 1 : null;
@@ -390,11 +393,12 @@ function DoneStep({ run, initialName }: { run: Run; initialName: string }) {
               <th>Rank</th><th>Name</th>
               <th style={{ textAlign: 'right' }}>Score</th>
               <th style={{ textAlign: 'right' }}>Acc</th>
+              <th style={{ textAlign: 'right' }}>WPM</th>
             </tr>
           </thead>
           <tbody>
             {board.length === 0 && (
-              <tr><td colSpan={4} className="center h3">No scores yet — you'll be first.</td></tr>
+              <tr><td colSpan={5} className="center h3">No scores yet — you'll be first.</td></tr>
             )}
             {board.map((r, i) => {
               const isMe = r.player_id === run.player_id;
@@ -413,6 +417,7 @@ function DoneStep({ run, initialName }: { run: Run; initialName: string }) {
                   </td>
                   <td style={{ textAlign: 'right' }}>{r.best_score}</td>
                   <td style={{ textAlign: 'right' }}>{r.best_acc}%</td>
+                  <td style={{ textAlign: 'right' }}>{r.best_wpm}</td>
                 </tr>
               );
             })}

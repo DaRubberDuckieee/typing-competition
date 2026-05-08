@@ -87,6 +87,7 @@ export type LBEntry = {
   company: string | null;
   best_score: number;
   best_acc: number;
+  best_wpm: number;
   best_at: string;
 };
 

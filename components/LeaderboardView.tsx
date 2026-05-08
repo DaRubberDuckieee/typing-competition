@@ -9,6 +9,7 @@ type LBRow = {
   company: string | null;
   best_score: number;
   best_acc: number;
+  best_wpm: number;
   best_at: string;
 };
 
@@ -217,13 +218,14 @@ export function LeaderboardView({
               <th>Company</th>
               <th style={{ textAlign: 'right' }}>Score</th>
               <th style={{ textAlign: 'right' }}>Acc</th>
+              <th style={{ textAlign: 'right' }}>WPM</th>
             </tr>
           </thead>
           <tbody>
             {scope === 'event' ? (
               eventRows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="center h3" style={{ padding: 32 }}>
+                  <td colSpan={6} className="center h3" style={{ padding: 32 }}>
                     No final-event scores yet for this day.
                   </td>
                 </tr>
@@ -243,13 +245,14 @@ export function LeaderboardView({
                       <td>{r.company || ''}</td>
                       <td style={{ textAlign: 'right' }}>{r.score}</td>
                       <td style={{ textAlign: 'right' }}>{r.acc}%</td>
+                      <td style={{ textAlign: 'right' }}>{r.wpm}</td>
                     </tr>
                   );
                 })
               )
             ) : qualifyingRows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="center h3" style={{ padding: 32 }}>
+                <td colSpan={6} className="center h3" style={{ padding: 32 }}>
                   No scores yet — be the first.
                 </td>
               </tr>
@@ -268,6 +271,7 @@ export function LeaderboardView({
                     <td>{r.company || ''}</td>
                     <td style={{ textAlign: 'right' }}>{r.best_score}</td>
                     <td style={{ textAlign: 'right' }}>{r.best_acc}%</td>
+                    <td style={{ textAlign: 'right' }}>{r.best_wpm}</td>
                   </tr>
                 );
               })
